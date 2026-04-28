@@ -290,7 +290,7 @@
 
     - name: Convert Microsoft GPG key to binary keyring format
       command: >-
-        gpg --dearmor -o {{ __mssql_gpg_key_dest }} /tmp/microsoft.asc
+        gpg --batch --no-tty --yes --dearmor -o {{ __mssql_gpg_key_dest }} /tmp/microsoft.asc
       changed_when: __mssql_gpg_download is changed
 
     - name: Ensure correct permissions on Microsoft GPG keyring
