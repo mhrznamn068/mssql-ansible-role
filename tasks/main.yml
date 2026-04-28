@@ -283,16 +283,27 @@
         url: "{{ mssql_rpm_key }}"
         dest: /tmp/microsoft.asc
         mode: '0644'
+<<<<<<< HEAD
       register: __mssql_gpg
       until: __mssql_gpg is success
       retries: 3
       delay: 5
+=======
+      register: __mssql_gpg_download
+      until: __mssql_gpg_download is success
+>>>>>>> c501f4b (fix ubuntu24 repo)
 
     - name: Convert Microsoft GPG key to binary keyring format
       command: >-
         gpg --dearmor -o {{ __mssql_gpg_key_dest }} /tmp/microsoft.asc
-      args:
-        creates: "{{ __mssql_gpg_key_dest }}"
+      changed_when: __mssql_gpg_download is changed
+
+    - name: Ensure correct permissions on Microsoft GPG keyring
+      file:
+        path: "{{ __mssql_gpg_key_dest }}"
+        owner: root
+        group: root
+        mode: '0644'
 
 - name: Prepare for the upgrade on RedHat
   when:

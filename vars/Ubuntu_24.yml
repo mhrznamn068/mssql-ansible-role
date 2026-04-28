@@ -2,5 +2,7 @@
 ---
 __mssql_prod_pkg_url: >-
   https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+__mssql_server_repository_list_url: >-
+  https://packages.microsoft.com/config/ubuntu/24.04/mssql-server-{{ mssql_version | int }}.list
 __mssql_supported_versions:
   - 2025
