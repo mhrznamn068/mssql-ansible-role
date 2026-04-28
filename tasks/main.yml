@@ -283,15 +283,10 @@
         url: "{{ mssql_rpm_key }}"
         dest: /tmp/microsoft.asc
         mode: '0644'
-<<<<<<< HEAD
-      register: __mssql_gpg
-      until: __mssql_gpg is success
-      retries: 3
-      delay: 5
-=======
       register: __mssql_gpg_download
       until: __mssql_gpg_download is success
->>>>>>> c501f4b (fix ubuntu24 repo)
+      retries: 3
+      delay: 5
 
     - name: Convert Microsoft GPG key to binary keyring format
       command: >-
