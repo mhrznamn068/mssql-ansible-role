@@ -684,7 +684,7 @@
 - name: Configure TLS encryption
   when: mssql_tls_enable is not none
   block:
-    - name: Ensure TLS private key directory exists on Debian-family systems
+    - name: Ensure TLS private key directory exists
       file:
         path: "{{ __mssql_tls_private_key_dest_dir }}"
         state: directory
@@ -693,7 +693,6 @@
         mode: "0700"
       when:
         - mssql_tls_enable | bool
-        - ansible_facts["pkg_mgr"] == 'apt'
 
     - name: >-
         Create certificate and private_key files and set mssql_tls_cert
