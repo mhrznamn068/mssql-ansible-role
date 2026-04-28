@@ -93,6 +93,24 @@
     - ansible_facts["distribution"] in ['CentOS', 'RedHat']
     - ansible_facts["distribution_major_version"] is version('10', '=')
 
+- name: Fail on Ubuntu when mssql_ha_configure is requested because it is not supported
+  fail:
+    msg: >-
+      This role does not support mssql_ha_configure on Ubuntu. HA configuration
+      is only supported on RHEL, CentOS, Fedora, and SLES platforms.
+  when:
+    - mssql_ha_configure | bool
+    - ansible_facts["distribution"] == 'Ubuntu'
+
+- name: Fail on Ubuntu when mssql_ad_configure is requested because it is not supported
+  fail:
+    msg: >-
+      This role does not support mssql_ad_configure on Ubuntu. AD configuration
+      is only supported on RHEL platforms.
+  when:
+    - mssql_ad_configure | bool
+    - ansible_facts["distribution"] == 'Ubuntu'
+
 - name: Verify that the user accepts EULA variables
   assert:
     that:
@@ -249,6 +267,30 @@
     state: present
   register: __mssql_gpg
   until: __mssql_gpg is success
+  when: ansible_facts["pkg_mgr"] != 'apt'
+
+- name: Deploy the GPG key for Microsoft repositories on Ubuntu
+  when: ansible_facts["pkg_mgr"] == 'apt'
+  block:
+    - name: Ensure gnupg is installed for key conversion
+      apt:
+        name: gnupg
+        state: present
+        update_cache: true
+
+    - name: Download Microsoft GPG key
+      get_url:
+        url: "{{ mssql_rpm_key }}"
+        dest: /tmp/microsoft.asc
+        mode: '0644'
+      register: __mssql_gpg
+      until: __mssql_gpg is success
+
+    - name: Convert Microsoft GPG key to binary keyring format
+      command: >-
+        gpg --dearmor -o {{ __mssql_gpg_key_dest }} /tmp/microsoft.asc
+      args:
+        creates: "{{ __mssql_gpg_key_dest }}"
 
 - name: Prepare for the upgrade on RedHat
   when:
@@ -344,6 +386,52 @@
   register: __zypper_addrepo_server_output
   failed_when: not __zypper_addrepo_server_output.rc in [0, 4]
   changed_when: __zypper_addrepo_server_output.rc != 4
+
+- name: Prepare for the upgrade on Ubuntu
+  when:
+    - __mssql_current_version is defined
+    - mssql_upgrade | bool
+    - ansible_facts["pkg_mgr"] == 'apt'
+    - __mssql_server_repository_list_url is defined
+    - __mssql_current_version | int != mssql_version | int
+  file:
+    path: /etc/apt/sources.list.d/mssql-server-{{ __mssql_current_version | int }}.list
+    state: absent
+
+- name: Configure the Microsoft SQL Server repo on Ubuntu using packages-microsoft-prod.deb
+  when:
+    - ansible_facts["pkg_mgr"] == 'apt'
+    - __mssql_prod_pkg_url is defined
+    - >-
+      (__mssql_server_packages not in ansible_facts.packages) or
+      (mssql_upgrade | bool)
+  block:
+    - name: Download packages-microsoft-prod.deb
+      get_url:
+        url: "{{ __mssql_prod_pkg_url }}"
+        dest: /tmp/packages-microsoft-prod.deb
+        mode: '0644'
+
+    - name: Install packages-microsoft-prod.deb
+      apt:
+        deb: /tmp/packages-microsoft-prod.deb
+
+- name: Configure the Microsoft SQL Server repo on Ubuntu 22 using list file
+  get_url:
+    url: "{{ __mssql_server_repository_list_url }}"
+    dest: /etc/apt/sources.list.d/mssql-server-{{ mssql_version | int }}.list
+    mode: '0644'
+  when:
+    - ansible_facts["pkg_mgr"] == 'apt'
+    - __mssql_server_repository_list_url is defined
+    - >-
+      (__mssql_server_packages not in ansible_facts.packages) or
+      (mssql_upgrade | bool)
+
+- name: Update apt cache after configuring Microsoft SQL Server repository
+  apt:
+    update_cache: true
+  when: ansible_facts["pkg_mgr"] == 'apt'
 
 - name: Configure to run as a confined application with SELinux
   package:
@@ -570,6 +658,20 @@
   failed_when: not __zypper_addrepo_tools_output.rc in [0, 4]
   changed_when: __zypper_addrepo_tools_output.rc != 4
 
+- name: Configure the Microsoft SQL Server Tools repository on Ubuntu 22 using list file
+  get_url:
+    url: "{{ __mssql_client_repository_list_url }}"
+    dest: /etc/apt/sources.list.d/mssql-release.list
+    mode: '0644'
+  when:
+    - ansible_facts["pkg_mgr"] == 'apt'
+    - __mssql_client_repository_list_url is defined
+
+- name: Update apt cache after configuring Microsoft SQL Server Tools repository
+  apt:
+    update_cache: true
+  when: ansible_facts["pkg_mgr"] == 'apt'
+
 - name: Ensure that SQL Server client tools are installed
   package:
     name: "{{ __mssql_client_packages }}"
@@ -580,6 +682,17 @@
 - name: Configure TLS encryption
   when: mssql_tls_enable is not none
   block:
+    - name: Ensure TLS private key directory exists on Debian-family systems
+      file:
+        path: "{{ __mssql_tls_private_key_dest_dir }}"
+        state: directory
+        owner: mssql
+        group: mssql
+        mode: "0700"
+      when:
+        - mssql_tls_enable | bool
+        - ansible_facts["pkg_mgr"] == 'apt'
+
     - name: >-
         Create certificate and private_key files and set mssql_tls_cert
         and _private_key
@@ -621,8 +734,8 @@
         src: "{{ item }}"
         remote_src: "{{ mssql_tls_remote_src }}"
         dest: >-
-          /etc/pki/tls/{{ 'certs' if item == mssql_tls_cert
-          else 'private' }}/{{ item | basename }}
+          {{ __mssql_tls_cert_dest_dir if item == mssql_tls_cert
+          else __mssql_tls_private_key_dest_dir }}/{{ item | basename }}
         owner: mssql
         group: mssql
         mode: "0600"
@@ -635,7 +748,7 @@
       include_tasks: mssql_conf_setting.yml
       vars:
         __mssql_tls_cert_dest: >-
-          /etc/pki/tls/certs/{{ mssql_tls_cert | basename }}
+          {{ __mssql_tls_cert_dest_dir }}/{{ mssql_tls_cert | basename }}
         __mssql_conf_setting: "network tlscert"
         __mssql_conf_setting_value: >-
           {{ __mssql_tls_cert_dest if mssql_tls_enable else 'unset' }}
@@ -644,7 +757,7 @@
       include_tasks: mssql_conf_setting.yml
       vars:
         __mssql_tls_private_key_dest: >-
-          /etc/pki/tls/private/{{ mssql_tls_private_key | basename }}
+          {{ __mssql_tls_private_key_dest_dir }}/{{ mssql_tls_private_key | basename }}
         __mssql_conf_setting: "network tlskey"
         __mssql_conf_setting_value: >-
           {{ __mssql_tls_private_key_dest if mssql_tls_enable else 'unset' }}
