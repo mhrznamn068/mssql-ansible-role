@@ -285,6 +285,8 @@
         mode: '0644'
       register: __mssql_gpg
       until: __mssql_gpg is success
+      retries: 3
+      delay: 5
 
     - name: Convert Microsoft GPG key to binary keyring format
       command: >-
