@@ -463,6 +463,8 @@
     else
       echo ""
     fi
+  args:
+    executable: /bin/bash
   changed_when: false
   register: __mssql_errorlog
   check_mode: false
@@ -790,6 +792,8 @@
         set -euo pipefail;
         grep '^forceencryption' {{ __mssql_conf_path }}
         | sed 's/forceencryption = //g'
+      args:
+        executable: /bin/bash
       changed_when: false
       failed_when: false
       register: __mssql_forceencryption_val
