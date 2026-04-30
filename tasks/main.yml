@@ -288,10 +288,16 @@
       retries: 3
       delay: 5
 
+    - name: Check if Microsoft GPG keyring already exists
+      stat:
+        path: "{{ __mssql_gpg_key_dest }}"
+      register: __mssql_gpg_key_stat
+
     - name: Convert Microsoft GPG key to binary keyring format
       command: >-
         gpg --batch --no-tty --yes --dearmor -o {{ __mssql_gpg_key_dest }} /tmp/microsoft.asc
-      changed_when: __mssql_gpg_download is changed
+      when: __mssql_gpg_download is changed or not __mssql_gpg_key_stat.stat.exists
+      changed_when: __mssql_gpg_download is changed or not __mssql_gpg_key_stat.stat.exists
 
     - name: Ensure correct permissions on Microsoft GPG keyring
       file:
@@ -299,6 +305,11 @@
         owner: root
         group: root
         mode: '0644'
+
+    - name: Remove temporary Microsoft GPG key file
+      file:
+        path: /tmp/microsoft.asc
+        state: absent
 
 - name: Prepare for the upgrade on RedHat
   when:
@@ -680,6 +691,7 @@
 - name: Update apt cache after configuring Microsoft SQL Server Tools repository
   apt:
     update_cache: true
+    cache_valid_time: 3600
   when: ansible_facts["pkg_mgr"] == 'apt'
 
 - name: Ensure that SQL Server client tools are installed
