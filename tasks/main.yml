@@ -722,8 +722,7 @@
         owner: mssql
         group: mssql
         mode: "0700"
-      when:
-        - mssql_tls_enable | bool
+      when: mssql_tls_enable | bool
 
     - name: >-
         Create certificate and private_key files and set mssql_tls_cert
