@@ -435,17 +435,32 @@
       apt:
         deb: /tmp/packages-microsoft-prod.deb
 
-- name: Configure the Microsoft SQL Server repo on Ubuntu 22 using list file
-  get_url:
-    url: "{{ __mssql_server_repository_list_url }}"
-    dest: /etc/apt/sources.list.d/mssql-server-{{ mssql_version | int }}.list
-    mode: '0644'
+- name: Configure the Microsoft SQL Server repo on Ubuntu using list file
   when:
     - ansible_facts["pkg_mgr"] == 'apt'
     - __mssql_server_repository_list_url is defined
     - >-
       (__mssql_server_packages not in ansible_facts.packages) or
       (mssql_upgrade | bool)
+  block:
+    - name: Download SQL Server repository list file to temp location
+      get_url:
+        url: "{{ __mssql_server_repository_list_url }}"
+        dest: /tmp/mssql-server-{{ mssql_version | int }}.list
+        mode: '0644'
+        force: true
+
+    - name: Install SQL Server repository list file only if content changed
+      copy:
+        src: /tmp/mssql-server-{{ mssql_version | int }}.list
+        dest: /etc/apt/sources.list.d/mssql-server-{{ mssql_version | int }}.list
+        remote_src: true
+        mode: '0644'
+
+    - name: Remove temporary SQL Server repository list file
+      file:
+        path: /tmp/mssql-server-{{ mssql_version | int }}.list
+        state: absent
 
 - name: Update apt cache after configuring Microsoft SQL Server repository
   apt:
